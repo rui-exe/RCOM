@@ -79,6 +79,10 @@ receivePacket(int fd){
             file_size = buffer[3]<<8 | buffer[4];
         }
         if(buffer[0] == DATA){
+            if(buffer[1] != n){
+                printf("Error: Expected sequence number %d, received sequence number %d",n,buffer[1]);
+                return -1;
+            }
             write(gif_fd,buffer+4,file_size);
         }
         if(buffer[0] == END){
@@ -86,5 +90,4 @@ receivePacket(int fd){
             break;
         }
     }
-
 }
