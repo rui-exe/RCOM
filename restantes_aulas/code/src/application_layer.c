@@ -1,6 +1,7 @@
 // Application layer protocol implementation
 
 #include "application_layer.h"
+#include <io.h>
 
 #define DATA 0x01
 #define START 0x02
@@ -68,26 +69,44 @@ sendDataPacket(int fd, const char *filename){
     }
     return 0;
     }
-receivePacket(int fd){
+    
+int receivePacket(int fd){
     unsigned char buffer[1000];
-    int n = 0;
-    int gif_fd, file_size;
+    int n = 0, n_aux;
+    int offset_needed = 0;
+    int gif_fd, file_size, append_size, sizeRead;
     while(1){
-        file_size = llread(fd,buffer);
+        sizeRead = llread(fd,buffer);
         if(buffer[0] == START){
             gif_fd = open(buffer+7,O_CREAT | O_WRONLY, 0666);
             file_size = buffer[3]<<8 | buffer[4];
         }
-        if(buffer[0] == DATA){
+        if(buffer[0] == DATA && sizeRead > 0){
+            append_size = buffer[2]<<8 + buffer[3];
+            if (buffer[1] != n){
+                off_t offset = (buffer[1] + offset_needed) * (1000-4) ;
+                lseek(gif_fd, offset, SEEK_SET);
+             }  
+
+            write(gif_fd,buffer+4,append_size);  
+
             if(buffer[1] != n){
-                printf("Error: Expected sequence number %d, received sequence number %d",n,buffer[1]);
-                return -1;
+                lseek(gif_fd, 0 , SEEK_HOLE);
             }
-            write(gif_fd,buffer+4,file_size);
+            if (buffer[1] == n){
+                n++;
+            }
+            n_aux = n;
+            n %= 255;
+
+            if (n % 255 == 0 && n_aux!= 0){
+                offset_needed+=255;
+            }
         }
         if(buffer[0] == END){
-            close(gif_fd);
             break;
         }
     }
+    close(gif_fd);
+    return fd;
 }

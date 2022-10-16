@@ -210,8 +210,6 @@ int llwrite(LinkLayer connectionParameters,int fd,const unsigned char *buf, int 
 ////////////////////////////////////////////////
 int llread(int fd, unsigned char *packet)
 {
-    // TODO
-
     return 0;
 }
 
