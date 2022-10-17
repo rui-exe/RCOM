@@ -216,9 +216,95 @@ int llread(int fd, unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics)
+void determineStateDisc(stateMachine *state, char byte)
 {
-    // TODO
+    unsigned char A_FLAG = 0x03;
+    switch(*state){
+        case Start:
+            if( byte == FLAG) *state = FLAG_RCV;
+            break;
 
-    return 1;
+        case FLAG_RCV:
+            if(byte == FLAG) *state = FLAG_RCV;
+            else if(byte == A_FLAG) *state = A_RCV;
+            else *state = Start;
+            break;
+
+        case A_RCV:
+            if(byte == FLAG) *state = FLAG_RCV;
+            else if(byte == 0x0B) *state = C_RCV;
+            else *state = Start;
+            break;
+
+        case C_RCV:
+            if(byte == FLAG) *state = FLAG_RCV;
+            else if(byte == BCC(A_FLAG, C_FLAG)) *state = BCC_NORMAL;
+            else *state = Start;
+            break;
+
+        case BCC_NORMAL:
+            if(byte == FLAG)  *state = DONE;
+            else *state = Start;
+            break;
+    }
+
+}
+
+int llclose(int fd)
+{
+    stateMachine state;
+    int bytes = 0;
+    unsigned char msg[256] = {0};
+    unsigned char aux = 0;
+    switch (connectionParameters.role)
+    {
+    case LlTx:
+        // Send DISC
+        msg[0] =  FLAG;
+        msg[1] = 0x03;
+        msg[2] = 0x0B;
+        msg[3] = BCC(0x03,0x0B);
+        msg[4] = FLAG;
+
+        bytes= write(fd, msg, 5);
+        printf("Sent Disconnect Flag\n", msg, bytes);
+        sleep(1);
+        state = Start;
+        STOP = FALSE;
+        while (STOP == FALSE)
+        {
+            read(fd, &aux, 1);
+            determineStateDISC(&state, aux);
+
+            if(state == DONE) STOP = TRUE;
+        }
+        break;
+    case LlRx:
+        STOP = FALSE;
+        state = Start;
+        while (STOP == FALSE)
+        {
+            read(fd, &aux, 1);
+            determineStateDISC(&state, aux);
+
+            if(state == DONE) STOP = TRUE;
+        }
+        printf("Received DISC");
+        msg[0] =  FLAG;
+        msg[1] = 0x03;
+        msg[2] = 0x0B;
+        msg[3] = BCC(0x03,0x0B);
+        msg[4] = FLAG;
+        bytes= write(fd, msg, 5);
+        break;
+    }
+      if (tcsetattr(fd,TCSANOW,&oldtio) != 0){
+        log_error("llclose() - Error on tcsetattr()");
+        return -1;
+    }
+    if (close(fd) != 0){
+        log_error("llclose() - Error on close()");
+        return -1;
+    }
+        return 1;
 }
