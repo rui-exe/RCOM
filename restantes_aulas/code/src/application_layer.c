@@ -12,7 +12,6 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
-    printf("ola\n");
 
     struct applicationLayer appLayer;
     LinkLayerRole linkLayerRole;
@@ -62,10 +61,8 @@ int sendPacket(int fd ,unsigned char C, const char *filename)
 int sendControlPacket(int fd, unsigned char C,const char* filename){
         
         FILE* fd_file = fopen(filename,"rb");
-        printf("Abrir Ficheiro\n");
         fseek(fd_file, 0L, SEEK_END);
         int file_size = ftell(fd_file);
-        printf("fd tell %d\n", file_size);
         fclose(fd_file);
         
         unsigned char buffer[1000];
@@ -79,10 +76,8 @@ int sendControlPacket(int fd, unsigned char C,const char* filename){
         strcpy(buffer+7,filename);
 
 
-        printf("llwrite\n");
         llwrite(buffer,7+strlen(filename));
-        
-        printf("end llwrite\n");
+    
         return 0;
 }
 int sendDataPacket(int fd, const char *filename){
@@ -91,14 +86,11 @@ int sendDataPacket(int fd, const char *filename){
     unsigned char buffer[1000];
     unsigned int bytes_read = 0; 
     while((bytes_read=fread(buffer+4,1,996, fd_file)) > 0){
-        printf("Sending %d\n", bytes_read);
         buffer[0] = 0x01;
         buffer[1] = n;
         buffer[2] = bytes_read/256;
         buffer[3] = bytes_read%256;
         llwrite(buffer,bytes_read+4);
-        
-        printf("End Sending\n");
         n++;
     }
 
@@ -114,16 +106,13 @@ int receivePacket(int fd, const char * filename){
     unsigned int file_size, append_size, sizeRead;
     while(1){
         sizeRead = llread(buffer);
-        printf("llread\n");
         
         if(buffer[0] == START){
-            printf("START\n");
             gif_fd = fopen(filename, "wb");
             file_size = buffer[3]<<8 | buffer[4];
         }
         else if(buffer[0] == DATA && sizeRead > 0){
             append_size = buffer[2]*256 + buffer[3];
-            printf("Tamanho: %d\n", append_size);
             /*if (buffer[1] != n){
                 off_t offset = (buffer[1] + offset_needed) * (1000-4) ;
                 lseek(gif_fd, offset, SEEK_SET);

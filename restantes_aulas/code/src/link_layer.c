@@ -443,6 +443,7 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
 
 int llread(unsigned char *packet)
 {
+    sleep(1);
     int reply;
     size_t size_read;
     while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
@@ -471,12 +472,12 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-
 void determineStateDISC(stateMachine *state, char byte)
 {
     unsigned char A_FLAG = 0x03;
-    unsigned char C_FLAG = 0x0b;
+    unsigned char C_FLAG = 0x0B;
 
+    printf("%x %d\n", byte, *state );
     switch(*state){
         case START:
             if( byte == FLAG) *state = FLAG_RCV;
@@ -508,7 +509,7 @@ void determineStateDISC(stateMachine *state, char byte)
 
 }
 
-int llclose(int fd, LinkLayer linkLayer)
+int llclose(int statistics, LinkLayer linkLayer)
 {
     int bytes = 0;
     unsigned char msg[256] = {0};
@@ -522,14 +523,13 @@ int llclose(int fd, LinkLayer linkLayer)
             msg[2] = 0x0B;
             msg[3] = BCC(0x03,0x0B);
             msg[4] = FLAG;
-
+            sleep(1);
             bytes= write(fd, msg, 5);
             printf("Sent Disconnect Flag\n", msg, bytes);
-            sleep(1);
             state = START;
             STOP = FALSE;
             while (STOP == FALSE)
-            {
+            {   
                 read(fd, &aux, 1);
                 determineStateDISC(&state, aux);
 
@@ -540,7 +540,7 @@ int llclose(int fd, LinkLayer linkLayer)
             STOP = FALSE;
             state = START;
             while (STOP == FALSE)
-            {
+            {   
                 read(fd, &aux, 1);
                 determineStateDISC(&state, aux);
 
