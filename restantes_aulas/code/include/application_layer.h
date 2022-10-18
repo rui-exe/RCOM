@@ -28,5 +28,5 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 int sendPacket(int fd, unsigned char C, const char *filename);
 int sendControlPacket(int fd, unsigned char C, const char *filename);
 int sendDataPacket(int fd, const char *filename);
-int receivePacket(int fd);
+int receivePacket(int fd, const char * filename);
 #endif // _APPLICATION_LAYER_H_

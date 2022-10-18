@@ -11,7 +11,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-typedef enum {Start, FLAG_RCV, A_RCV, C_RCV, BCC_NORMAL , DONE} stateMachine;
+typedef enum {START, FLAG_RCV, A_RCV, C_RCV, BCC_NORMAL, BCC_DATA, DONE} stateMachine;
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 #define FALSE 0
@@ -24,13 +24,19 @@ typedef enum {Start, FLAG_RCV, A_RCV, C_RCV, BCC_NORMAL , DONE} stateMachine;
 #define C_RECEIVER 0x07
 #define BCC(n,m) (n ^ m)
 #define F 0x7e
+#define ESC 0x7D
 #define TRANSMITER 1
 #define RECEIVER 0
+#define ACK(n) ((n)<<7 | 0x05)
+#define NACK(n) ((n)<<7 | 0x01)
+#define REPEATED_MESSAGE 2
 
 stateMachine state;
 int failed = 0;
 int alarm_enabled;
 int alarm_count = 0;
+int sn = 0;
+int fd;
 
 volatile int STOP = FALSE;
 struct termios oldtio;
@@ -50,31 +56,31 @@ void determineState(stateMachine *state, char byte, int user)
     
     
     switch(*state){
-        case Start:
+        case START:
             if( byte == FLAG) *state = FLAG_RCV;
             break;
 
         case FLAG_RCV:
             if(byte == FLAG) *state = FLAG_RCV;
             else if(byte == A_FLAG) *state = A_RCV;
-            else *state = Start;
+            else *state = START;
             break;
 
         case A_RCV:
             if(byte == FLAG) *state = FLAG_RCV;
             else if(byte == C_FLAG) *state = C_RCV;
-            else *state = Start;
+            else *state = START;
             break;
 
         case C_RCV:
             if(byte == FLAG) *state = FLAG_RCV;
             else if(byte == BCC(A_FLAG, C_FLAG)) *state = BCC_NORMAL;
-            else *state = Start;
+            else *state = START;
             break;
 
         case BCC_NORMAL:
             if(byte == FLAG)  *state = DONE;
-            else *state = Start;
+            else *state = START;
             break;
     }
 
@@ -84,7 +90,7 @@ void determineState(stateMachine *state, char byte, int user)
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
-int llopen(LinkLayer connectionParameters, int fd)
+int llopen(LinkLayer connectionParameters)
 {
    struct sigaction action;
     sigemptyset(&action.sa_mask);
@@ -96,6 +102,14 @@ int llopen(LinkLayer connectionParameters, int fd)
     // because we don't want to get killed if linenoise sends CTRL-C.
 
     struct termios newtio;
+
+    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+
+    if (fd < 0)
+    {
+        perror(connectionParameters.serialPort);
+        exit(-1);
+    }
 
     // Save current port settings
     if (tcgetattr(fd, &oldtio) == -1)
@@ -143,14 +157,14 @@ int llopen(LinkLayer connectionParameters, int fd)
         alarm_enabled = TRUE;
         printf("Attempt %d\n", alarm_count);
         failed = 0;
-        state = Start;
+        state = START;
         unsigned char aux = 0;
         sleep(1);
         while (STOP == FALSE)
         {
             bytes = read(fd, &aux, 1);
             if( bytes > 0){
-                determineState(&state, aux,connectionParameters.role);
+                determineState(&state, aux, 1);
             }
             if (state == DONE || failed == 1){ 
                     alarm(0);
@@ -158,21 +172,22 @@ int llopen(LinkLayer connectionParameters, int fd)
                 }
         }
     }while(alarm_count < connectionParameters.nRetransmissions && state != DONE);
+    
     if(state == DONE) printf("UA Received\n");
     else printf("UA Not Received\n");
 
     }
-    else{
+    else{  
 
         // Loop for input
         unsigned char aux = 0;
-        stateMachine state = Start;
+        state = START;
 
         // RECEIVE SET
         while (STOP == FALSE)
         {
             read(fd, &aux, 1);
-            determineState(&state, aux, connectionParameters.role);
+            determineState(&state, aux, 0);
 
             if(state == DONE) STOP = TRUE;
         }
@@ -196,29 +211,282 @@ int llopen(LinkLayer connectionParameters, int fd)
     
 }
 
-////////////////////////////////////////////////
-// LLWRITE
-////////////////////////////////////////////////
+void receiveACK(stateMachine* state,unsigned char byte, unsigned char * ack, int sn) {
 
-int llwrite(LinkLayer connectionParameters,int fd,const unsigned char *buf, int bufSize)
+    switch(*state){
+        case START:
+            if(byte == FLAG) *state = FLAG_RCV;
+            break;
+
+        case FLAG_RCV:
+            if(byte == FLAG) *state = FLAG_RCV;
+            else if(byte == A) *state = A_RCV;
+            else *state = START;
+            break;
+
+        case A_RCV:
+            printf("%x\n", byte);
+            if(byte == FLAG) *state = FLAG_RCV;
+            else if(byte == ACK(sn)) {
+                
+                printf("Received ACK sn\n");
+                *state = C_RCV;
+                *ack = ACK(sn);
+            }
+            else if (byte == NACK(sn)) {
+                
+                printf("Received NACK sn\n");
+                *state = C_RCV;
+                *ack = NACK(sn);
+            }
+            else *state = START;
+
+            
+            break;
+
+        case C_RCV:
+            if(byte == BCC(A, *ack))
+                *state = BCC_NORMAL;
+            else if(byte == FLAG_RCV){
+                *ack = FALSE;
+                *state = FLAG_RCV;
+            }
+            else{
+                *state = START;
+                *ack = FALSE;
+            }
+            break;
+
+        case BCC_NORMAL:
+            if(byte == FLAG) *state = DONE;
+            else{
+                *ack = FALSE;
+                *state = START;
+                
+            }
+            break;
+    }
+    
+}
+
+
+
+
+int llwrite(const unsigned char *buf, int bufSize)
 {
+    int done = FALSE;
+    signal(SIGALRM, alarmHandler);
+    state = START;
+
+    // counting number in the middle
+    unsigned int count = 0;
+
+    for(int i = 0; i < bufSize; i++){
+        if(buf[i] == FLAG || buf[i] == ESC)
+            count++;
+    }
+
+    unsigned int size = bufSize + 6 + count;
+    unsigned char msg[size];
+    for(int i = 0; i < size; i++){
+        msg[i]=0;
+    }
+
+    msg[0] = FLAG;
+    msg[1] = A;
+    msg[2] = sn << 7;
+    msg[3] = BCC(A, sn << 7);
+    unsigned int i = 0, BCC2=0;
+
+    // byte stuffing
+    for (int j = 0; j < bufSize; j++) {
+        switch (buf[j]) {
+            case FLAG:
+                msg[j + i + 4] = ESC;
+                msg[j + i + 5] = FLAG;
+                BCC2 = BCC(BCC2, FLAG);
+                i++;
+                break;
+
+            case ESC:
+                msg[j + i + 4] = ESC;
+                msg[j + i + 5] = ESC;
+                BCC2 = BCC(BCC2, ESC);
+                i++;
+                break;
+
+            default:
+                msg[j + i + 4] = buf[j];
+                BCC2 = BCC(BCC2, buf[j]);
+        }
+    }
+    msg[i+bufSize+ 4] = BCC2;
+    msg[i+bufSize+ 5] = FLAG;
+    alarm_enabled = FALSE;
+    STOP = FALSE;
+    while(state != DONE && STOP != TRUE) {
+        unsigned char received;
+        unsigned char ack;
+        
+        if (alarm_enabled == FALSE) {
+            
+            printf("Enviar ... %d\n", sn);
+            write(fd, msg, size);
+            signal(SIGALRM, alarmHandler);
+            alarm(3);
+            alarm_enabled = TRUE;
+        }
+
+        unsigned int bytes = read(fd, &received, 1);
+        if( bytes > 0){
+            receiveACK(&state, received, &ack, 1-sn);
+            
+
+            if (state == DONE && ack == ACK(1-sn)){
+                printf("Recebeu ACK yayyyy \n");
+                sn = 1-sn;
+                alarm(0);
+                STOP = TRUE;
+            }
+            // se  ack==NACK, tenho de reenviar
+            else if(state == DONE) state = START;
+        } 
+        
+        
+    }
+    
+
     return 0;
 }
+
 
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(int fd, unsigned char *packet)
+
+
+/**
+ * @brief
+ * 
+ * @param packet 
+ * @param sn 
+ * @return true se for para mandar um ack, false se for para mandar um nack
+ */
+int receiveData(unsigned char *packet, int sn, size_t *size_read) {
+
+    state = START;
+    unsigned char C_CONTROL = sn << 7;
+    unsigned char C_REPLY = (1-sn) << 7;
+    unsigned int i=0, BCC2 = 0, stuffing = 0;  // meter a 1 sempre for enviado um ESC
+    printf("Receiving %d\n", sn);
+    while(state != DONE){
+
+        unsigned char received;
+        unsigned int bytes = read(fd, &received, 1);
+
+        if( bytes > 0){
+            printf("%x %d\n",received, state);
+            switch(state){
+                case START:
+                    if( received == FLAG) state = FLAG_RCV;
+                    break;
+
+                case FLAG_RCV:
+                    if(received  == FLAG) state = FLAG_RCV;
+                    else if(received  == A) state = A_RCV;
+                    else state = START;
+                    break;
+
+                case A_RCV:
+                    if(received  == FLAG) state = FLAG_RCV;
+                    else if(received == C_CONTROL){
+                        state = C_RCV;
+                    }
+                    // a receber uma mensagem repetida, e a querer a proxima (houve um erro)
+                    else if(C_REPLY == received ){
+                        // mandar um ack, para passar para a prox mensagem 
+                        return REPEATED_MESSAGE;
+                    }
+                    else state = START;
+                    break;
+
+                case C_RCV:
+                    if(received  == FLAG) state = FLAG_RCV;
+                    else if(received  == BCC(A, C_CONTROL)) state = BCC_DATA;
+                    else state = START;
+                    break;
+
+                case BCC_DATA:
+                    if(!stuffing){
+                        if(received  == FLAG){
+                            state = DONE;
+                            
+                            BCC2 = BCC(BCC2, packet[i-1]);
+                            size_read = i-1;
+                            return (BCC2 == packet[i-1]);
+                        } 
+                        else if(received  == ESC) stuffing = TRUE;
+                        else{
+                            BCC2 = BCC(BCC2, received );
+                            packet[i] = received ;
+                            i++;
+                        }
+                    }
+                    else{
+                        stuffing = FALSE;
+                        BCC2 = BCC(BCC2, received );
+                        packet[i] = received ;
+                        i++;
+                    }
+                    break;
+            }
+        }
+        
+        
+    }
+
+    return FALSE;
+
+}
+
+
+
+int llread(unsigned char *packet)
 {
-    return 0;
+    int reply;
+    size_t size_read;
+    while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
+        //mandar nack
+        if( reply == 0){
+            unsigned char C_NACK = NACK(1-sn);
+            printf("Sending Nack %x\n", C_NACK);
+            unsigned char buf[] = {FLAG, A, C_NACK, BCC(A, C_NACK), F};
+            write(fd, buf, 5);
+        }
+        // mandar ack, proveniente de mensagens repetidas
+        else{
+            unsigned char C_ACK = ACK(sn);
+            printf("Sending Reply %x\n", C_ACK);
+            unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
+             write(fd, buf, 5);
+        }
+    }
+    //mandar ack
+    sleep(1);
+    printf("Sending ACK %d\n", sn);
+    sn = 1-sn;
+    unsigned char C_ACK = ACK(sn);
+    unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
+    write(fd, buf, 5);
+
+    return size_read;
 }
 
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics)
-{
-    // TODO
 
-    return 1;
+
+int llclose(int fd, LinkLayer linkLayer)
+{
 }
