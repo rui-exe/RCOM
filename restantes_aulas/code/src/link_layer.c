@@ -448,18 +448,21 @@ int llread(unsigned char *packet)
     while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
         //mandar nack
         if( reply == 0){
+            printf("Sending NACK\n");
             unsigned char C_NACK = NACK(1-sn);
             unsigned char buf[] = {FLAG, A, C_NACK, BCC(A, C_NACK), F};
             write(fd, buf, 5);
         }
         // mandar ack, proveniente de mensagens repetidas
         else{
+            printf("Sending ACK\n");
             unsigned char C_ACK = ACK(sn);
             unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
              write(fd, buf, 5);
         }
     }
     //mandar ack
+    printf("Sending ACK\n");
     sn = 1-sn;
     unsigned char C_ACK = ACK(sn);
     unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
