@@ -43,7 +43,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     }
 
-    printf("FIM!");
+    printf("END\n");
     llclose(0, linkLayer);
 }
 int sendPacket(int fd ,unsigned char C, const char *filename)
@@ -129,7 +129,6 @@ int receivePacket(int fd, const char * filename){
 
             /*n_aux = n;
             n %= 255;
-
             if (n % 255 == 0 && n_aux!= 0){
                 offset_needed+=255;
             }*/

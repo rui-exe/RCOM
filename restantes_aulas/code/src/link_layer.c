@@ -477,7 +477,6 @@ void determineStateDISC(stateMachine *state, char byte)
     unsigned char A_FLAG = 0x03;
     unsigned char C_FLAG = 0x0B;
 
-    printf("%x %d\n", byte, *state );
     switch(*state){
         case START:
             if( byte == FLAG) *state = FLAG_RCV;
