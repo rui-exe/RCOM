@@ -113,25 +113,10 @@ int receivePacket(int fd, const char * filename){
         }
         else if(buffer[0] == DATA && sizeRead > 0){
             append_size = buffer[2]*256 + buffer[3];
-            /*if (buffer[1] != n){
-                off_t offset = (buffer[1] + offset_needed) * (1000-4) ;
-                lseek(gif_fd, offset, SEEK_SET);
-             }  */
-
             fwrite(buffer+4, 1,append_size, gif_fd);  
-
-            /*if(buffer[1] != n){
-                lseek(gif_fd, 0 , SEEK_END);
-            }*/
             if (buffer[1] == n){
                 n++;
             }
-
-            /*n_aux = n;
-            n %= 255;
-            if (n % 255 == 0 && n_aux!= 0){
-                offset_needed+=255;
-            }*/
         }
         else if(buffer[0] == END){
             
