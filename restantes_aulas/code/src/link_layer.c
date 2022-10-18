@@ -443,7 +443,6 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
 
 int llread(unsigned char *packet)
 {
-    sleep(1);
     int reply;
     size_t size_read;
     while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
