@@ -225,17 +225,12 @@ void receiveACK(stateMachine* state,unsigned char byte, unsigned char * ack, int
             break;
 
         case A_RCV:
-            printf("%x\n", byte);
             if(byte == FLAG) *state = FLAG_RCV;
             else if(byte == ACK(sn)) {
-                
-                printf("Received ACK sn\n");
                 *state = C_RCV;
                 *ack = ACK(sn);
             }
             else if (byte == NACK(sn)) {
-                
-                printf("Received NACK sn\n");
                 *state = C_RCV;
                 *ack = NACK(sn);
             }
@@ -329,8 +324,6 @@ int llwrite(const unsigned char *buf, int bufSize)
         unsigned char ack;
         
         if (alarm_enabled == FALSE) {
-            
-            printf("Enviar ... %d\n", sn);
             write(fd, msg, size);
             signal(SIGALRM, alarmHandler);
             alarm(3);
@@ -343,7 +336,6 @@ int llwrite(const unsigned char *buf, int bufSize)
             
 
             if (state == DONE && ack == ACK(1-sn)){
-                printf("Recebeu ACK yayyyy \n");
                 sn = 1-sn;
                 alarm(0);
                 STOP = TRUE;
@@ -378,14 +370,12 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
     unsigned char C_CONTROL = sn << 7;
     unsigned char C_REPLY = (1-sn) << 7;
     unsigned int i=0, BCC2 = 0, stuffing = 0;  // meter a 1 sempre for enviado um ESC
-    printf("Receiving %d\n", sn);
     while(state != DONE){
 
         unsigned char received;
         unsigned int bytes = read(fd, &received, 1);
 
         if( bytes > 0){
-            printf("%x %d\n",received, state);
             switch(state){
                 case START:
                     if( received == FLAG) state = FLAG_RCV;
@@ -459,21 +449,17 @@ int llread(unsigned char *packet)
         //mandar nack
         if( reply == 0){
             unsigned char C_NACK = NACK(1-sn);
-            printf("Sending Nack %x\n", C_NACK);
             unsigned char buf[] = {FLAG, A, C_NACK, BCC(A, C_NACK), F};
             write(fd, buf, 5);
         }
         // mandar ack, proveniente de mensagens repetidas
         else{
             unsigned char C_ACK = ACK(sn);
-            printf("Sending Reply %x\n", C_ACK);
             unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
              write(fd, buf, 5);
         }
     }
     //mandar ack
-    sleep(1);
-    printf("Sending ACK %d\n", sn);
     sn = 1-sn;
     unsigned char C_ACK = ACK(sn);
     unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
@@ -489,7 +475,7 @@ int llread(unsigned char *packet)
 void determineStateDISC(stateMachine *state, char byte)
 {
     unsigned char A_FLAG = 0x03;
-    unsigned char C_FLAG = 0x11;
+    unsigned char C_FLAG = 0x0b;
 
     switch(*state){
         case START:
