@@ -341,7 +341,10 @@ int llwrite(const unsigned char *buf, int bufSize)
                 STOP = TRUE;
             }
             // se  ack==NACK, tenho de reenviar
-            else if(state == DONE) state = START;
+            else if(state == DONE){
+                write(fd, msg, size);
+                state = START;
+            } 
         } 
         
         
@@ -366,9 +369,9 @@ int llwrite(const unsigned char *buf, int bufSize)
  */
 int receiveData(unsigned char *packet, int sn, size_t *size_read) {
 
-    state = START;
-    unsigned char C_CONTROL = sn << 7;
-    unsigned char C_REPLY = (1-sn) << 7;
+    state = START;  
+    unsigned char C_CONTROL = sn << 7;  //sn
+    unsigned char C_REPLY = (1-sn) << 7;   // nr
     unsigned int i=0, BCC2 = 0, stuffing = 0;  // meter a 1 sempre for enviado um ESC
     while(state != DONE){
 
@@ -406,6 +409,7 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
                     else state = START;
                     break;
 
+                //stuffing
                 case BCC_DATA:
                     if(!stuffing){
                         if(received  == FLAG){
@@ -413,7 +417,8 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
                             
                             BCC2 = BCC(BCC2, packet[i-1]);
                             size_read = i-1;
-                            return (BCC2 == packet[i-1]);
+                            return (BCC2 == packet[i-1]); 
+                            // ser igual ao penultimo byte antes da flag
                         } 
                         else if(received  == ESC) stuffing = TRUE;
                         else{
@@ -533,13 +538,24 @@ int llclose(int statistics, LinkLayer linkLayer)
             {   
                 read(fd, &aux, 1);
                 determineStateDISC(&state, aux);
-
                 if(state == DONE) STOP = TRUE;
             }
+
+            // Send UA
+            unsigned char ua[256] = {0};
+            ua[0] =  FLAG;
+            ua[1] = 0x03;
+            ua[2] = 0x07;
+            ua[3] = BCC(0x03,0x07);
+            ua[4] = FLAG;
+            int bytes= write(fd, ua, UA_SIZE);
+            printf("Sent UA\n");
             break;
+
         case LlRx:
             STOP = FALSE;
             state = START;
+            // receive DISC
             while (STOP == FALSE)
             {   
                 read(fd, &aux, 1);
@@ -547,13 +563,28 @@ int llclose(int statistics, LinkLayer linkLayer)
 
                 if(state == DONE) STOP = TRUE;
             }
-            printf("Received DISC");
+            printf("Received DISC\n");
+
+            // sending DISC
             msg[0] =  FLAG;
             msg[1] = 0x03;
             msg[2] = 0x0B;
             msg[3] = BCC(0x03,0x0B);
             msg[4] = FLAG;
             bytes= write(fd, msg, 5);
+
+            //receiving UA
+            state = START;
+            STOP = FALSE;
+             while (STOP == FALSE)
+            {   
+                read(fd, &aux, 1);
+                determineState(&state, aux, 1);
+
+                if(state == DONE) STOP = TRUE;
+            }
+             printf("Received UA\n");
+
             break;
     }
       if (tcsetattr(fd,TCSANOW,&oldtio) != 0){
