@@ -174,7 +174,10 @@ int llopen(LinkLayer connectionParameters)
     }while(alarm_count < connectionParameters.nRetransmissions && state != DONE);
     
     if(state == DONE) printf("UA Received\n");
-    else printf("UA Not Received\n");
+    else {
+        printf("UA Not Received\n");
+        return -1;
+        }
 
     }
     else{  

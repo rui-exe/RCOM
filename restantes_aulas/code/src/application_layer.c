@@ -24,7 +24,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     strcpy( linkLayer.serialPort, serialPort);
     linkLayer.timeout = timeout;
     int fd = llopen(linkLayer);    
-    
+    if(fd==-1) return;
     appLayer.fileDescriptor = fd;
     switch(appLayer.status){
         case 0:
