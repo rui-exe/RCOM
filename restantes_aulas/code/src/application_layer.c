@@ -77,7 +77,6 @@ int sendControlPacket(int fd, unsigned char C,const char* filename){
 
 
         llwrite(buffer,7+strlen(filename));
-    
         return 0;
 }
 int sendDataPacket(int fd, const char *filename){
@@ -90,7 +89,11 @@ int sendDataPacket(int fd, const char *filename){
         buffer[1] = n;
         buffer[2] = bytes_read/256;
         buffer[3] = bytes_read%256;
-        llwrite(buffer,bytes_read+4);
+
+        if(llwrite(buffer,bytes_read+4)==-1){
+            printf("Max number tries reached ");
+            exit(-1);
+        }
         n++;
     }
 

@@ -272,6 +272,7 @@ void receiveACK(stateMachine* state,unsigned char byte, unsigned char * ack, int
 
 int llwrite(const unsigned char *buf, int bufSize)
 {
+    int attemptNumber = 0;
     int done = FALSE;
     signal(SIGALRM, alarmHandler);
     state = START;
@@ -327,6 +328,8 @@ int llwrite(const unsigned char *buf, int bufSize)
         unsigned char ack;
         
         if (alarm_enabled == FALSE) {
+            if(attemptNumber == 4) return -1;
+            attemptNumber ++;
             write(fd, msg, size);
             signal(SIGALRM, alarmHandler);
             alarm(3);
@@ -451,6 +454,7 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
 
 int llread(unsigned char *packet)
 {
+    sleep(1);
     int reply;
     size_t size_read;
     while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
