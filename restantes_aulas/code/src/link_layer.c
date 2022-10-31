@@ -159,7 +159,6 @@ int llopen(LinkLayer connectionParameters)
         failed = 0;
         state = START;
         unsigned char aux = 0;
-        sleep(1);
         while (STOP == FALSE)
         {
             bytes = read(fd, &aux, 1);
@@ -206,7 +205,6 @@ int llopen(LinkLayer connectionParameters)
 
         int bytes= write(fd, msg, UA_SIZE);
         printf(":%s:%d\n", msg, bytes);
-        // sleep(1);
     }
 
     return fd; 
@@ -345,9 +343,11 @@ int llwrite(const unsigned char *buf, int bufSize)
                 sn = 1-sn;
                 alarm(0);
                 STOP = TRUE;
+                printf("RECEIVED NACK aka RREJ...\n");
             }
             // se  ack==NACK, tenho de reenviar
             else if(state == DONE){
+                printf("RECEIVED NACK aka RREJ...\n");
                 write(fd, msg, size);
                 state = START;
             } 
@@ -454,27 +454,26 @@ int receiveData(unsigned char *packet, int sn, size_t *size_read) {
 
 int llread(unsigned char *packet)
 {
-    sleep(1);
     int reply;
     size_t size_read;
     while( (reply = receiveData(packet, sn, &size_read)) != TRUE){
         //mandar nack
         if( reply == 0){
-            printf("Sending NACK\n");
+            printf("Sending NACK or RRej...\n");
             unsigned char C_NACK = NACK(1-sn);
             unsigned char buf[] = {FLAG, A, C_NACK, BCC(A, C_NACK), F};
             write(fd, buf, 5);
         }
         // mandar ack, proveniente de mensagens repetidas
         else{
-            printf("Sending ACK\n");
+            printf("Sending ACK because repeated message...\n");
             unsigned char C_ACK = ACK(sn);
             unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
              write(fd, buf, 5);
         }
     }
     //mandar ack
-    printf("Sending ACK\n");
+    printf("Sending ACK everything in order...\n");
     sn = 1-sn;
     unsigned char C_ACK = ACK(sn);
     unsigned char buf[] = {FLAG, A, C_ACK, BCC(A, C_ACK), F};
@@ -536,7 +535,6 @@ int llclose(int statistics, LinkLayer linkLayer)
             msg[2] = 0x0B;
             msg[3] = BCC(0x03,0x0B);
             msg[4] = FLAG;
-            sleep(1);
             bytes= write(fd, msg, 5);
             printf("Sent Disconnect Flag\n", msg, bytes);
             state = START;
