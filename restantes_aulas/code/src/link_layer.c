@@ -343,7 +343,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 sn = 1-sn;
                 alarm(0);
                 STOP = TRUE;
-                printf("RECEIVED NACK aka RREJ...\n");
+                printf("RECEIVED ACK aka RR...\n");
             }
             // se  ack==NACK, tenho de reenviar
             else if(state == DONE){
